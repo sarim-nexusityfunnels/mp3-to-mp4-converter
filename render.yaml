@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: mp3-to-mp4-converter
+    runtime: docker
+    plan: starter  # $7/mo — needed for Chromium memory
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: PYTHONUNBUFFERED
+        value: "1"
