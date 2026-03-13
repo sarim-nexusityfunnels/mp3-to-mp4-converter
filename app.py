@@ -25,11 +25,110 @@ TIMEOUT_MS = 300_000  # 5 min max wait
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({
-        "service": "MP3 to MP4 Converter",
-        "status": "running",
-        "usage": "POST /convert with 'file' (multipart) or 'mp3_url' (JSON)"
-    })
+    return '''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MP3 to MP4 Converter</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .container { max-width: 500px; width: 90%; text-align: center; }
+  h1 { font-size: 28px; margin-bottom: 8px; color: #fff; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 32px; }
+  .dropzone { border: 2px dashed #333; border-radius: 16px; padding: 48px 24px; cursor: pointer; transition: all 0.2s; background: #0f0f18; }
+  .dropzone:hover, .dropzone.dragover { border-color: #a78bfa; background: #13131f; }
+  .dropzone-text { font-size: 16px; color: #888; }
+  .dropzone-text span { color: #a78bfa; text-decoration: underline; cursor: pointer; }
+  #fileInput { display: none; }
+  .file-name { margin-top: 16px; padding: 10px 16px; background: #1a1a2e; border-radius: 8px; font-size: 13px; color: #a78bfa; display: none; }
+  .btn { margin-top: 20px; padding: 14px 32px; background: #a78bfa; color: #000; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; display: none; transition: all 0.2s; width: 100%; }
+  .btn:hover { background: #c4b5fd; }
+  .btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+  .status { margin-top: 20px; padding: 16px; border-radius: 10px; font-size: 14px; display: none; }
+  .status.loading { display: block; background: #1a1a0e; border: 1px solid #fbbf2433; color: #d4a017; }
+  .status.success { display: block; background: #0e1a0e; border: 1px solid #4ade8033; color: #4ade80; }
+  .status.error { display: block; background: #1a0e0e; border: 1px solid #f8717133; color: #f87171; }
+  .download-link { display: inline-block; margin-top: 12px; padding: 12px 24px; background: #4ade80; color: #000; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; }
+  .download-link:hover { background: #6ee7a0; }
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid #fbbf2444; border-top-color: #fbbf24; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .note { margin-top: 24px; font-size: 11px; color: #444; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>MP3 to MP4</h1>
+  <p class="sub">Upload an MP3 and get a music video with AI-generated art</p>
+
+  <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+    <input type="file" id="fileInput" accept=".mp3,audio/mpeg">
+    <p class="dropzone-text">Drag & drop your MP3 here<br>or <span>browse files</span></p>
+  </div>
+
+  <div class="file-name" id="fileName"></div>
+  <button class="btn" id="convertBtn" onclick="startConvert()">Convert to MP4</button>
+  <div class="status" id="status"></div>
+  <p class="note">Conversion typically takes 2-4 minutes depending on audio length</p>
+</div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileNameEl = document.getElementById('fileName');
+const convertBtn = document.getElementById('convertBtn');
+const statusEl = document.getElementById('status');
+let selectedFile = null;
+
+['dragenter','dragover'].forEach(e => dropzone.addEventListener(e, ev => { ev.preventDefault(); dropzone.classList.add('dragover'); }));
+['dragleave','drop'].forEach(e => dropzone.addEventListener(e, ev => { ev.preventDefault(); dropzone.classList.remove('dragover'); }));
+dropzone.addEventListener('drop', ev => { if(ev.dataTransfer.files.length) handleFile(ev.dataTransfer.files[0]); });
+fileInput.addEventListener('change', ev => { if(ev.target.files.length) handleFile(ev.target.files[0]); });
+
+function handleFile(file) {
+  if(!file.name.toLowerCase().endsWith('.mp3')) { alert('Please select an MP3 file'); return; }
+  selectedFile = file;
+  fileNameEl.textContent = file.name + ' (' + (file.size/1024/1024).toFixed(1) + ' MB)';
+  fileNameEl.style.display = 'block';
+  convertBtn.style.display = 'block';
+  statusEl.className = 'status';
+  statusEl.style.display = 'none';
+}
+
+async function startConvert() {
+  if(!selectedFile) return;
+  convertBtn.disabled = true;
+  convertBtn.textContent = 'Converting...';
+  statusEl.className = 'status loading';
+  statusEl.innerHTML = '<span class="spinner"></span> Uploading and converting... this takes 2-4 minutes. Don\\'t close this tab!';
+
+  try {
+    const form = new FormData();
+    form.append('file', selectedFile);
+    const resp = await fetch('/convert', { method: 'POST', body: form });
+
+    if(!resp.ok) {
+      const err = await resp.json().catch(() => ({error:'Unknown error'}));
+      throw new Error(err.error || 'Conversion failed');
+    }
+
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const mp4Name = selectedFile.name.replace('.mp3','.mp4');
+
+    statusEl.className = 'status success';
+    statusEl.innerHTML = 'Done! Your video is ready.<br><a class="download-link" href="' + url + '" download="' + mp4Name + '">Download ' + mp4Name + '</a>';
+  } catch(e) {
+    statusEl.className = 'status error';
+    statusEl.textContent = 'Error: ' + e.message;
+  }
+  convertBtn.disabled = false;
+  convertBtn.textContent = 'Convert to MP4';
+}
+</script>
+</body>
+</html>'''
 
 
 @app.route("/health", methods=["GET"])
